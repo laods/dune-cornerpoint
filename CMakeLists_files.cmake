@@ -52,6 +52,7 @@ list (APPEND TEST_DATA_FILES
 # find tutorials examples -name '*.c*' -printf '\t%p\n' | sort
 list (APPEND EXAMPLE_SOURCE_FILES
 	examples/grdecl2vtu.cpp
+	examples/mirror_cpgrid.cpp
 	)
 
 # programs listed here will not only be compiled, but also marked for
