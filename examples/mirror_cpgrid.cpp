@@ -113,7 +113,57 @@ void mirror_specgrid(EclipseGridParser parser, string direction, ofstream& out) 
 }
 
 void mirror_coord(EclipseGridParser parser, string direction, ofstream& out) {
-    
+    // We assume uniform spacing in x and y directions and parallel top and bottom faces
+    vector<int> dimensions = parser.getSPECGRID().dimensions;
+    vector<double> coord = parser.getFloatingPointValue("COORD");
+    const int entries_per_pillar = 6;
+    vector<double> coord_mirrored;
+    // Handle the two directions differently due to ordering of the pillars.
+    if (direction == "x") {
+        const int entries = (2*dimensions[0] + 1) * (dimensions[1] + 1) * entries_per_pillar;
+        const int entries_per_line = entries_per_pillar*(dimensions[0] + 1);
+        coord_mirrored.assign(entries, 0.0);
+        const double spacing = coord[entries_per_pillar]-coord[0];
+        vector<double>::iterator it_new = coord_mirrored.begin();
+        vector<double>::iterator it_orig;
+        // Loop through each pillar line in the x-direction
+        for (it_orig = coord.begin(); it_orig != coord.end(); it_orig += entries_per_line) {
+            // Copy old pillars
+            copy(it_orig, it_orig + entries_per_line, it_new);
+            // Add new pillars in between
+            it_new += entries_per_line;
+            vector<double> next_vec(it_orig + entries_per_line - entries_per_pillar, it_orig + entries_per_line);
+            for (int r=0; r < dimensions[0]; ++r) {
+                next_vec[0] += spacing;
+                next_vec[3] += spacing;
+                copy(next_vec.begin(), next_vec.end(), it_new);
+                it_new += entries_per_pillar;
+            }
+        }
+    }
+    else if (direction == "y") {
+        const int entries = (dimensions[0] + 1) * (2*dimensions[1] + 1) * entries_per_pillar;
+        const int entries_per_line = entries_per_pillar*(dimensions[1] + 1);
+        coord_mirrored.assign(entries, 0.0);
+        const double spacing = coord[entries_per_line + 1]-coord[1];
+        vector<double>::iterator it_new = coord_mirrored.begin();
+        // Copy old pillars
+        copy(coord.begin(), coord.end(), it_new);
+        // Add new pillars at the end
+        it_new += coord.size();
+        vector<double> next_vec(coord.end() - entries_per_line, coord.end());
+        for ( ; it_new != coord_mirrored.end(); it_new += entries_per_line) {
+            for (int i = 1; i < entries_per_line; i += 3) {
+                next_vec[i] += spacing;
+            }
+            copy(next_vec.begin(), next_vec.end(), it_new);
+        }
+    }
+    else {
+        cerr << "Direction should be either x or y" << endl;
+        exit(1);
+    }
+    printKeywordValues(out, "COORD", coord_mirrored, 6);
 }
 
 void mirror_zcorn(EclipseGridParser parser, string direction, ofstream& out) {
