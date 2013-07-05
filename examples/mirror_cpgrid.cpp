@@ -167,7 +167,57 @@ void mirror_coord(EclipseGridParser parser, string direction, ofstream& out) {
 }
 
 void mirror_zcorn(EclipseGridParser parser, string direction, ofstream& out) {
-    
+    vector<int> dimensions = parser.getSPECGRID().dimensions;
+    vector<double> zcorn = parser.getFloatingPointValue("ZCORN");
+    vector<double> zcorn_mirrored;
+    if (direction == "x") {
+        const int entries = dimensions[0]*2*dimensions[1]*dimensions[2]*8; // Eight corners per cell
+        zcorn_mirrored.assign(entries, 0.0);
+        const int entries_per_line = dimensions[0]*2;
+        vector<double>::iterator it_new = zcorn_mirrored.begin();
+        vector<double>::iterator it_orig = zcorn.begin();
+        for ( ; it_orig != zcorn.end(); it_orig += entries_per_line) {
+            vector<double> next_vec(it_orig, it_orig + entries_per_line);
+            vector<double> next_reversed = next_vec;
+            reverse(next_reversed.begin(), next_reversed.end());
+            // Copy old corner-points
+            copy(it_orig, it_orig + entries_per_line, it_new);
+            it_new += entries_per_line;
+            // Add new corner-points
+            copy(next_reversed.begin(), next_reversed.end(), it_new);
+            it_new += entries_per_line;
+        }
+    }
+    else if (direction == "y") {
+        const int entries = dimensions[0]*dimensions[1]*2*dimensions[2]*8; // Eight corners per cell
+        zcorn_mirrored.assign(entries, 0.0);
+        const int entries_per_line_x = dimensions[0]*2;
+        const int entries_per_layer = dimensions[0]*dimensions[1]*4;
+        vector<double>::iterator it_new = zcorn_mirrored.begin();
+        vector<double>::iterator it_orig = zcorn.begin();
+        for ( ; it_orig != zcorn.end(); it_orig += entries_per_layer) {
+            // Copy old corner-points
+            copy(it_orig, it_orig + entries_per_layer, it_new);
+            it_new += entries_per_layer;
+            // Add new corner-points
+            vector<double> next_vec(it_orig, it_orig + entries_per_layer);
+            vector<double> next_reordered(entries_per_layer, 0.0);
+            vector<double>::iterator it_next = next_vec.end();
+            vector<double>::iterator it_reordered = next_reordered.begin();
+            // Reorder next entries
+            for ( ; it_reordered != next_reordered.end(); it_reordered += entries_per_line_x) {
+                copy(it_next - entries_per_line_x, it_next, it_reordered);
+                it_next -= entries_per_line_x;
+            }
+            copy(next_reordered.begin(), next_reordered.end(), it_new);
+            it_new += entries_per_layer;
+        }
+    }
+    else {
+        cerr << "Direction should be either x or y" << endl;
+        exit(1);
+    }
+    printKeywordValues(out, "ZCORN", zcorn_mirrored, 8);
 }
 
 void mirror_celldata(string keyword, EclipseGridParser parser, string direction, ofstream& out) {
