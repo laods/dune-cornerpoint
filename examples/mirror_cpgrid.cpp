@@ -242,11 +242,75 @@ void mirror_zcorn(EclipseGridParser parser, string direction, ofstream& out) {
     printKeywordValues(out, "ZCORN", zcorn_mirrored, 8);
 }
 
-void mirror_celldata(string keyword, EclipseGridParser parser, string direction, ofstream& out) {
-    // Handle ACTNUM and SATNUM specially.
+vector<int> getKeywordValues(string keyword, EclipseGridParser parser, int dummy) {
+    return parser.getIntegerValue(keyword);
 }
-    
-    
+
+vector<double> getKeywordValues(string keyword, EclipseGridParser parser, double dummy) {
+    return parser.getFloatingPointValue(keyword);
+}
+
+/// Mirror keywords that have one value for each cell
+template <class T>
+void mirror_celldata(string keyword, EclipseGridParser parser, string direction, ofstream& out) {
+    if ( ! parser.hasField(keyword)) {
+        cout << "Ignoring keyword " << keyword << " as it was not found." << endl;
+        return;
+    }
+    // Get data from eclipse parser
+    vector<int> dimensions = parser.getSPECGRID().dimensions;
+    vector<T> values = getKeywordValues(keyword, parser, T(0.0));
+    vector<T> values_mirrored(2*dimensions[0]*dimensions[1]*dimensions[2], 0.0);
+    // Handle the two directions differently due to ordering of the pillars.
+    if (direction == "x") {
+        typename vector<T>::iterator it_orig = values.begin();
+        typename vector<T>::iterator it_new = values_mirrored.begin();
+        // Loop through each line and copy old cell data and add new (which are the old reversed)
+        for ( ; it_orig != values.end(); it_orig += dimensions[0]) {
+            // Copy old cell data
+            copy(it_orig, it_orig + dimensions[0], it_new);
+            it_new += dimensions[0];
+            // Add new cell data
+            vector<double> next_vec(it_orig, it_orig + dimensions[0]);
+            vector<double> next_reversed = next_vec;
+            reverse(next_reversed.begin(), next_reversed.end());
+            copy(next_reversed.begin(), next_reversed.end(), it_new);
+            it_new += dimensions[0];
+        }
+    }
+    else if (direction =="y") {
+        typename vector<T>::iterator it_orig = values.begin();
+        typename vector<T>::iterator it_new = values_mirrored.begin();
+        // Entries per layer
+        const int entries_per_layer = dimensions[0]*dimensions[1];
+        // Loop through each layer and copy old cell data and add new (which are the old reordered) 
+        for ( ; it_orig != values.end(); it_orig += entries_per_layer) {
+            // Copy old cell data
+            copy(it_orig, it_orig + entries_per_layer, it_new);
+            it_new += entries_per_layer;
+            // Add new cell data
+            vector<T> next_vec(it_orig, it_orig + entries_per_layer);
+            vector<T> next_reordered(entries_per_layer, 0.0);
+            typename vector<T>::iterator it_next = next_vec.end();
+            typename vector<T>::iterator it_reordered = next_reordered.begin();
+            // Reorder next entries
+            for ( ; it_reordered != next_reordered.end(); it_reordered += dimensions[0]) {
+                copy(it_next - dimensions[0], it_next, it_reordered);
+                it_next -= dimensions[0];
+            }
+            copy(next_reordered.begin(), next_reordered.end(), it_new);
+            it_new += entries_per_layer;
+        }
+    }
+    else {
+        cerr << "Direction should be either x or y" << endl;
+        exit(1);
+    }
+    // Write new keyword values to output file
+    printKeywordValues(out, keyword, values_mirrored, 8);
+}
+
+
 int main(int argc, char** argv)
 {
     // Set output precision
@@ -295,9 +359,11 @@ int main(int argc, char** argv)
     mirror_specgrid(eclParser, direction, outfile);
     mirror_coord(eclParser, direction, outfile);
     mirror_zcorn(eclParser, direction, outfile);
-    mirror_celldata("ACTNUM", eclParser, direction, outfile);
-    mirror_celldata("PERMX", eclParser, direction, outfile);
-    mirror_celldata("PORO", eclParser, direction, outfile);
-    mirror_celldata("SATNUM", eclParser, direction, outfile);
+    mirror_celldata<int>("ACTNUM", eclParser, direction, outfile);
+    mirror_celldata<double>("PERMX", eclParser, direction, outfile);
+    mirror_celldata<double>("PERMY", eclParser, direction, outfile);
+    mirror_celldata<double>("PERMZ", eclParser, direction, outfile);
+    mirror_celldata<double>("PORO", eclParser, direction, outfile);
+    mirror_celldata<int>("SATNUM", eclParser, direction, outfile);
 
 }
