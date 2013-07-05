@@ -31,7 +31,7 @@
  * @file mirror_cpgrid.cpp
  * @brief Mirror corner-point grid taken from grdecl file
  * 
- * Results in a periodic grid
+ * The input grid is mirrored in either the x- or y-direction, resulting in a periodic grid.
  *
  * @author Lars Vingli Odsæter <laods@statoil.com>
  *
@@ -86,12 +86,14 @@ void printKeywordValues(ofstream& out, string keyword, vector<T> values, int nCo
     out << "/" << endl << endl;
 }
 
+/// Mirror keyword MAPAXES in parser
 void mirror_mapaxes(EclipseGridParser parser, string direction, ofstream& out) {
     // Assumes axis aligned with x/y-direction
     cout << "Warning: Keyword MAPAXES not fully understood. Result should be verified manually." << endl;
     if (parser.hasField("MAPAXES")) {
         vector<double> mapaxes = parser.getFloatingPointValue("MAPAXES");
         vector<double> mapaxes_mirrored = mapaxes;
+        // Double the length of the coordinate axis
         if (direction == "x") {
             mapaxes_mirrored[4] = (mapaxes[4]-mapaxes[2])*2 + mapaxes[2];
         }
@@ -102,7 +104,9 @@ void mirror_mapaxes(EclipseGridParser parser, string direction, ofstream& out) {
     }
 }
 
+/// Mirror keyword SPECGRID in parser
 void mirror_specgrid(EclipseGridParser parser, string direction, ofstream& out) {
+    // We only need to multiply the dimension by 2 in the correct direction.
     SPECGRID specgrid = parser.getSPECGRID();
     vector<int> dim = specgrid.dimensions;
     if (direction == "x")      {dim[0] *= 2;}
@@ -112,6 +116,7 @@ void mirror_specgrid(EclipseGridParser parser, string direction, ofstream& out) 
         << specgrid.numres << " " << specgrid.qrdial << endl << "/" << endl << endl;
 }
 
+/// Mirror keyword COORD in parser
 void mirror_coord(EclipseGridParser parser, string direction, ofstream& out) {
     // We assume uniform spacing in x and y directions and parallel top and bottom faces
     vector<int> dimensions = parser.getSPECGRID().dimensions;
@@ -120,9 +125,12 @@ void mirror_coord(EclipseGridParser parser, string direction, ofstream& out) {
     vector<double> coord_mirrored;
     // Handle the two directions differently due to ordering of the pillars.
     if (direction == "x") {
+        // Total entries in mirrored ZCORN. Number of pillars times 6
         const int entries = (2*dimensions[0] + 1) * (dimensions[1] + 1) * entries_per_pillar;
+        // Entries per line in x-direction. Number of pillars in x-direction times 6
         const int entries_per_line = entries_per_pillar*(dimensions[0] + 1);
         coord_mirrored.assign(entries, 0.0);
+        // Distance between pillars in x-directiion
         const double spacing = coord[entries_per_pillar]-coord[0];
         vector<double>::iterator it_new = coord_mirrored.begin();
         vector<double>::iterator it_orig;
@@ -142,9 +150,12 @@ void mirror_coord(EclipseGridParser parser, string direction, ofstream& out) {
         }
     }
     else if (direction == "y") {
+        // Total entries in mirrored ZCORN. Number of pillars times 6
         const int entries = (dimensions[0] + 1) * (2*dimensions[1] + 1) * entries_per_pillar;
+        // Entries per line in y-direction. Number of pillars in y-direction times 6
         const int entries_per_line = entries_per_pillar*(dimensions[1] + 1);
         coord_mirrored.assign(entries, 0.0);
+        // Distance between pillars in y-directiion
         const double spacing = coord[entries_per_line + 1]-coord[1];
         vector<double>::iterator it_new = coord_mirrored.begin();
         // Copy old pillars
@@ -163,19 +174,25 @@ void mirror_coord(EclipseGridParser parser, string direction, ofstream& out) {
         cerr << "Direction should be either x or y" << endl;
         exit(1);
     }
+    // Write new COORD values to output file
     printKeywordValues(out, "COORD", coord_mirrored, 6);
 }
 
+/// Mirror keyword ZCORN in parser
 void mirror_zcorn(EclipseGridParser parser, string direction, ofstream& out) {
     vector<int> dimensions = parser.getSPECGRID().dimensions;
     vector<double> zcorn = parser.getFloatingPointValue("ZCORN");
     vector<double> zcorn_mirrored;
+    // Handle the two directions differently due to ordering of the pillars.
     if (direction == "x") {
-        const int entries = dimensions[0]*2*dimensions[1]*dimensions[2]*8; // Eight corners per cell
+        // Total entries in mirrored ZCORN. Eight corners per cell.
+        const int entries = dimensions[0]*2*dimensions[1]*dimensions[2]*8;
         zcorn_mirrored.assign(entries, 0.0);
+        // Entries per line in x-direction. Two for each cell.
         const int entries_per_line = dimensions[0]*2;
         vector<double>::iterator it_new = zcorn_mirrored.begin();
         vector<double>::iterator it_orig = zcorn.begin();
+        // Loop through each line and copy old corner-points and add new (which are the old reversed)
         for ( ; it_orig != zcorn.end(); it_orig += entries_per_line) {
             vector<double> next_vec(it_orig, it_orig + entries_per_line);
             vector<double> next_reversed = next_vec;
@@ -189,12 +206,16 @@ void mirror_zcorn(EclipseGridParser parser, string direction, ofstream& out) {
         }
     }
     else if (direction == "y") {
-        const int entries = dimensions[0]*dimensions[1]*2*dimensions[2]*8; // Eight corners per cell
+        // Total entries in mirrored ZCORN. Eight corners per cell.
+        const int entries = dimensions[0]*dimensions[1]*2*dimensions[2]*8;
         zcorn_mirrored.assign(entries, 0.0);
+        // Entries per line in x-direction. Two for each cell.
         const int entries_per_line_x = dimensions[0]*2;
+        // Entries per layer of corner-points. Four for each cell
         const int entries_per_layer = dimensions[0]*dimensions[1]*4;
         vector<double>::iterator it_new = zcorn_mirrored.begin();
         vector<double>::iterator it_orig = zcorn.begin();
+        // Loop through each layer and copy old corner-points and add new (which are the old reordered) 
         for ( ; it_orig != zcorn.end(); it_orig += entries_per_layer) {
             // Copy old corner-points
             copy(it_orig, it_orig + entries_per_layer, it_new);
@@ -217,6 +238,7 @@ void mirror_zcorn(EclipseGridParser parser, string direction, ofstream& out) {
         cerr << "Direction should be either x or y" << endl;
         exit(1);
     }
+    // Write new ZCORN values to output file
     printKeywordValues(out, "ZCORN", zcorn_mirrored, 8);
 }
 
